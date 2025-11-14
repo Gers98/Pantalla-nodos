@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>PAAC System | Mapa de Asistentes</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;600;700&family=Orbitron:wght@500;700&display=swap"
+    rel="stylesheet"
+  />
+  <style>
+    :root {
+      --bg-1: #0e1526;
+      --bg-2: #1d2740;
+      --grid: rgba(255, 255, 255, 0.05);
+      --line: rgba(145, 180, 255, 0.55);
+      --node-outer: rgba(140, 185, 255, 0.9);
+      --node-inner: #f3f6ff;
+      --text-main: #eef2ff;
+      --accent: #7fb2ff;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      font-family: "Montserrat", system-ui, sans-serif;
+      background: radial-gradient(circle at top, var(--bg-2), var(--bg-1) 60%);
+      color: var(--text-main);
+    }
+
+    .background-orbit {
+      position: fixed;
+      inset: 0;
+      z-index: -2;
+      overflow: hidden;
+    }
+
+    #bg-canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      background: radial-gradient(circle at top, #202b4a, #0b1020 60%);
+    }
+
+    .gradient-orb {
+      position: absolute;
+      width: 550px;
+      height: 550px;
+      background: radial-gradient(circle, rgba(139, 189, 255, 0.9), transparent 65%);
+      filter: blur(14px);
+      opacity: 0.3;
+      animation: orb-float-1 22s ease-in-out infinite alternate;
+      pointer-events: none;
+    }
+
+    .gradient-orb.orb-2 {
+      width: 750px;
+      height: 750px;
+      background: radial-gradient(circle, rgba(120, 140, 255, 0.9), transparent 65%);
+      top: auto;
+      bottom: -260px;
+      right: -220px;
+      left: auto;
+      animation: orb-float-2 28s ease-in-out infinite alternate;
+      opacity: 0.35;
+    }
+
+    .grid-lines {
+      position: absolute;
+      inset: 0;
+      background-image: linear-gradient(var(--grid) 1px, transparent 1px),
+        linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+      background-size: 80px 80px;
+      opacity: 0.35;
+      mask-image: radial-gradient(circle at center, black 0%, transparent 75%);
+      pointer-events: none;
+    }
+
+    @keyframes orb-float-1 {
+      from { transform: translate(-120px, -80px); }
+      to { transform: translate(60px, 40px); }
+    }
+
+    @keyframes orb-float-2 {
+      from { transform: translate(60px, 40px); }
+      to { transform: translate(-80px, -50px); }
+    }
+
+    .shell {
+      position: relative;
+      z-index: 1;
+      width: 100%;
+      height: 100%;
+      padding: 16px 22px 20px;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Zona principal: solo el grafo ocupando casi todo */
+    .main-area {
+      flex: 1;
+      position: relative;
+      border-radius: 26px;
+      border: 1px solid rgba(175, 205, 255, 0.5);
+      background: radial-gradient(circle at center, #202b4a, #12182b);
+      overflow: hidden;
+      box-shadow: 0 22px 55px rgba(0, 0, 0, 0.8);
+    }
+
+    #graph-canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    /* Banner de bienvenida (lo dejamos, es parte del efecto) */
+    .welcome-banner {
+      position: absolute;
+      bottom: 18px;
+      left: 50%;
+      transform: translateX(-50%) translateY(10px);
+      min-width: 40%;
+      max-width: 80%;
+      padding: 10px 22px;
+      border-radius: 999px;
+      background: linear-gradient(
+        120deg,
+        rgba(126, 167, 255, 0.95),
+        rgba(187, 215, 255, 0.98)
+      );
+      border: 1px solid rgba(232, 240, 255, 0.9);
+      box-shadow: 0 14px 38px rgba(0, 0, 0, 0.75);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      font-size: 0.98rem;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.45s ease-out, transform 0.45s ease-out;
+      color: #1a2340;
+      white-space: nowrap;
+    }
+
+    .welcome-banner.visible {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+
+    .welcome-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      background: #1f2c4a;
+    }
+
+    .welcome-main-text {
+      font-weight: 600;
+    }
+
+    .welcome-name {
+      font-family: "Orbitron", system-ui, sans-serif;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      font-size: 0.9rem;
+    }
+
+    .welcome-company {
+      font-size: 0.85rem;
+      opacity: 0.9;
+    }
+  </style>
+</head>
+<body>
+  <!-- Fondo IA suavizado -->
+  <div class="background-orbit">
+    <canvas id="bg-canvas"></canvas>
+    <div class="gradient-orb orb-1"></div>
+    <div class="gradient-orb orb-2"></div>
+    <div class="grid-lines"></div>
+  </div>
+
+  <div class="shell">
+    <main class="main-area">
+      <canvas id="graph-canvas"></canvas>
+
+      <!-- Único texto visible: bienvenida dinámica -->
+      <div id="welcome-banner" class="welcome-banner">
+        <div class="welcome-dot"></div>
+        <div>
+          <div class="welcome-main-text">
+            Bienvenido(a), <span id="welcome-name" class="welcome-name">ASISTENTE</span>
+          </div>
+          <div class="welcome-company">
+            Representando a: <span id="welcome-company">EMPRESA</span>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    /************************************
+     * Fondo dinámico suave
+     ************************************/
+    const bgCanvas = document.getElementById("bg-canvas");
+    const bgCtx = bgCanvas.getContext("2d");
+
+    let bgPoints = [];
+    const BG_POINTS = 45;
+    const BG_MAX_DIST = 190;
+
+    function resizeBg() {
+      bgCanvas.width = window.innerWidth;
+      bgCanvas.height = window.innerHeight;
+    }
+
+    window.addEventListener("resize", resizeBg);
+    resizeBg();
+
+    function initBgPoints() {
+      bgPoints = [];
+      for (let i = 0; i < BG_POINTS; i++) {
+        bgPoints.push({
+          x: Math.random() * bgCanvas.width,
+          y: Math.random() * bgCanvas.height,
+          vx: (Math.random() - 0.5) * 0.22,
+          vy: (Math.random() - 0.5) * 0.22,
+        });
+      }
+    }
+    initBgPoints();
+
+    function drawBg() {
+      bgCtx.clearRect(0, 0, bgCanvas.width, bgCanvas.height);
+
+      bgPoints.forEach((p, i) => {
+        p.x += p.vx;
+        p.y += p.vy;
+
+        if (p.x < 0 || p.x > bgCanvas.width) p.vx *= -1;
+        if (p.y < 0 || p.y > bgCanvas.height) p.vy *= -1;
+
+        bgCtx.fillStyle = "rgba(170,200,255,0.65)";
+        bgCtx.beginPath();
+        bgCtx.arc(p.x, p.y, 1.4, 0, Math.PI * 2);
+        bgCtx.fill();
+
+        for (let j = i + 1; j < bgPoints.length; j++) {
+          const q = bgPoints[j];
+          const dx = p.x - q.x;
+          const dy = p.y - q.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist < BG_MAX_DIST) {
+            const alpha = 0.18 * (1 - dist / BG_MAX_DIST);
+            bgCtx.strokeStyle = "rgba(150,180,255," + alpha + ")";
+            bgCtx.lineWidth = 0.5;
+            bgCtx.beginPath();
+            bgCtx.moveTo(p.x, p.y);
+            bgCtx.lineTo(q.x, q.y);
+            bgCtx.stroke();
+          }
+        }
+      });
+
+      requestAnimationFrame(drawBg);
+    }
+    drawBg();
+
+    /************************************
+     * Grafo principal
+     ************************************/
+    const graphCanvas = document.getElementById("graph-canvas");
+    const graphCtx = graphCanvas.getContext("2d");
+
+    function resizeGraph() {
+      const rect = graphCanvas.getBoundingClientRect();
+      graphCanvas.width = rect.width * window.devicePixelRatio;
+      graphCanvas.height = rect.height * window.devicePixelRatio;
+      graphCtx.setTransform(
+        window.devicePixelRatio,
+        0,
+        0,
+        window.devicePixelRatio,
+        0,
+        0
+      );
+    }
+
+    window.addEventListener("resize", resizeGraph);
+    setTimeout(resizeGraph, 200);
+
+    const nodes = [];
+    const knownDocs = new Set();
+    const welcomeBanner = document.getElementById("welcome-banner");
+    const welcomeNameEl = document.getElementById("welcome-name");
+    const welcomeCompanyEl = document.getElementById("welcome-company");
+
+    const POLL_INTERVAL_MS = 5000;
+
+    // 👉 URL CSV de tu hoja (ya con gid correcto)
+    const SHEET_CSV_URL =
+      "https://docs.google.com/spreadsheets/d/1hgjqPTNz2aV4XX7TIKqwWKPUkFFQyZJJCKVU-VI9KT8/export?format=csv&gid=1830882299";
+
+    function showWelcome(name, company) {
+      welcomeNameEl.textContent = (name || "Asistente").toUpperCase();
+      welcomeCompanyEl.textContent = company || "Empresa";
+      welcomeBanner.classList.add("visible");
+      setTimeout(() => {
+        welcomeBanner.classList.remove("visible");
+      }, 4200);
+    }
+
+    function addNodeForParticipant(participant) {
+      const rect = graphCanvas.getBoundingClientRect();
+      const width = rect.width || 800;
+      const height = rect.height || 400;
+
+      const cx = width / 2;
+      const cy = height / 2;
+      const ringRadius = Math.min(width, height) * 0.32;
+
+      const angle = Math.random() * Math.PI * 2;
+      const r = ringRadius + (Math.random() - 0.5) * 80;
+
+      const x = cx + r * Math.cos(angle);
+      const y = cy + r * Math.sin(angle);
+
+      const empresa = participant.empresa || "Empresa";
+
+      nodes.push({
+        id: participant.doc || participant.nombre + "_" + Date.now(),
+        label: empresa,
+        x,
+        y,
+        vx: (Math.random() - 0.5) * 0.35,
+        vy: (Math.random() - 0.5) * 0.35,
+        radius: 16 + Math.min(18, empresa.length),
+      });
+    }
+
+    function drawGraph(timestamp) {
+      const rect = graphCanvas.getBoundingClientRect();
+      const width = rect.width;
+      const height = rect.height;
+
+      graphCtx.clearRect(0, 0, width, height);
+
+      // 1) Movimiento básico
+      nodes.forEach((node) => {
+        node.x += node.vx;
+        node.y += node.vy;
+
+        if (node.x < 40 || node.x > width - 40) node.vx *= -1;
+        if (node.y < 40 || node.y > height - 40) node.vy *= -1;
+      });
+
+      // 2) Colisión entre nodos (repulsión suave)
+      for (let i = 0; i < nodes.length; i++) {
+        for (let j = i + 1; j < nodes.length; j++) {
+          const n1 = nodes[i];
+          const n2 = nodes[j];
+          const dx = n2.x - n1.x;
+          const dy = n2.y - n1.y;
+          const dist = Math.sqrt(dx * dx + dy * dy) || 0.0001;
+
+          const minDist =
+            (n1.radius + n2.radius) * 0.85; // 0.85 para que casi no se toquen
+
+          if (dist < minDist) {
+            const overlap = (minDist - dist) / 2;
+            const nx = dx / dist;
+            const ny = dy / dist;
+
+            n1.x -= nx * overlap;
+            n1.y -= ny * overlap;
+            n2.x += nx * overlap;
+            n2.y += ny * overlap;
+          }
+        }
+      }
+
+      // 3) Conexiones
+      const maxDist = Math.min(width, height) * 0.5;
+      for (let i = 0; i < nodes.length; i++) {
+        for (let j = i + 1; j < nodes.length; j++) {
+          const n1 = nodes[i];
+          const n2 = nodes[j];
+          const dx = n1.x - n2.x;
+          const dy = n1.y - n2.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist < maxDist) {
+            const alpha = 0.26 * (1 - dist / maxDist);
+            graphCtx.strokeStyle = "rgba(145,180,255," + alpha + ")";
+            graphCtx.lineWidth = 1;
+            graphCtx.beginPath();
+            graphCtx.moveTo(n1.x, n1.y);
+            graphCtx.lineTo(n2.x, n2.y);
+            graphCtx.stroke();
+          }
+        }
+      }
+
+      // 4) Nodos
+      const t = (timestamp || 0) / 900;
+      nodes.forEach((node, idx) => {
+        const pulse = 1 + 0.06 * Math.sin(t + idx * 0.8);
+        const r = node.radius * pulse;
+
+        // Anillo exterior
+        graphCtx.save();
+        graphCtx.fillStyle = "rgba(140,185,255,0.9)";
+        graphCtx.beginPath();
+        graphCtx.arc(node.x, node.y, r, 0, Math.PI * 2);
+        graphCtx.fill();
+        graphCtx.restore();
+
+        // Disco interior
+        graphCtx.fillStyle = "#f3f6ff";
+        graphCtx.beginPath();
+        graphCtx.arc(node.x, node.y, r * 0.72, 0, Math.PI * 2);
+        graphCtx.fill();
+
+        // Texto empresa
+        const label = node.label || "Empresa";
+        graphCtx.fillStyle = "#1f2945";
+        graphCtx.font = "600 12px 'Montserrat', system-ui";
+        graphCtx.textAlign = "center";
+        graphCtx.textBaseline = "middle";
+
+        if (label.length > 16) {
+          const mid = Math.ceil(label.length / 2);
+          const part1 = label.slice(0, mid);
+          const part2 = label.slice(mid);
+          graphCtx.fillText(part1, node.x, node.y - 6);
+          graphCtx.fillText(part2, node.x, node.y + 8);
+        } else {
+          graphCtx.fillText(label, node.x, node.y);
+        }
+      });
+
+      requestAnimationFrame(drawGraph);
+    }
+    drawGraph();
+
+    /************************************
+     * Helper parse CSV
+     ************************************/
+    function parseCsv(text) {
+      const lines = text
+        .split(/\r?\n/)
+        .map((l) => l.trim())
+        .filter((l) => l.length > 0);
+
+      if (lines.length <= 1) {
+        return { headers: [], rows: [] };
+      }
+
+      const headerLine = lines[0];
+
+      const countComa = headerLine.split(",").length;
+      const countPuntoComa = headerLine.split(";").length;
+      const delim = countPuntoComa > countComa ? ";" : ",";
+
+      const splitLine = (line) => line.split(delim);
+
+      const headers = splitLine(headerLine);
+      const rows = lines.slice(1).map(splitLine);
+
+      return { headers, rows };
+    }
+
+    function findColumnIndexes(headersRaw) {
+      const headers = headersRaw.map((h) => h.toLowerCase());
+
+      const idxNombre = headers.findIndex((h) => h.includes("nombre"));
+      const idxDoc = headers.findIndex((h) => h.includes("documento"));
+      const idxTel = headers.findIndex(
+        (h) => h.includes("celular") || h.includes("tel")
+      );
+      const idxCiudad = headers.findIndex((h) => h.includes("ciudad"));
+      const idxEmpresa = headers.findIndex(
+        (h) => h.includes("empresa") || h.includes("representas")
+      );
+      const idxCorreo = headers.findIndex(
+        (h) => h.includes("correo") || h.includes("email")
+      );
+      const idxInteres = headers.findIndex(
+        (h) => h.includes("interés") || h.includes("interes")
+      );
+
+      return {
+        idxNombre,
+        idxDoc,
+        idxTel,
+        idxCiudad,
+        idxEmpresa,
+        idxCorreo,
+        idxInteres,
+      };
+    }
+
+    /************************************
+     * Polling Google Sheets
+     ************************************/
+    async function pollSheet() {
+      try {
+        const resp = await fetch(SHEET_CSV_URL + "&t=" + Date.now());
+        if (!resp.ok) {
+          console.error("Error HTTP al leer CSV:", resp.status);
+          return;
+        }
+        const text = await resp.text();
+
+        const { headers, rows } = parseCsv(text);
+
+        if (!headers.length || !rows.length) {
+          return;
+        }
+
+        const {
+          idxNombre,
+          idxDoc,
+          idxTel,
+          idxCiudad,
+          idxEmpresa,
+          idxCorreo,
+          idxInteres,
+        } = findColumnIndexes(headers);
+
+        if (idxNombre === -1 || idxDoc === -1) {
+          console.warn("No se encontraron columnas de nombre/documento.");
+          return;
+        }
+
+        rows.forEach((colsRaw) => {
+          const cols = colsRaw;
+          const nombre = cols[idxNombre] || "";
+          const doc = cols[idxDoc] || "";
+          const tel = idxTel !== -1 ? cols[idxTel] || "" : "";
+          const ciudad = idxCiudad !== -1 ? cols[idxCiudad] || "" : "";
+          const empresa = idxEmpresa !== -1 ? cols[idxEmpresa] || "" : "";
+          const correo = idxCorreo !== -1 ? cols[idxCorreo] || "" : "";
+          const interes = idxInteres !== -1 ? cols[idxInteres] || "" : "";
+
+          if (!nombre || !doc) return;
+          if (knownDocs.has(doc)) return;
+
+          knownDocs.add(doc);
+
+          const participant = {
+            nombre,
+            doc,
+            tel,
+            ciudad,
+            empresa,
+            correo,
+            interes,
+          };
+
+          addNodeForParticipant(participant);
+          showWelcome(nombre, empresa);
+        });
+      } catch (err) {
+        console.error("Error al leer CSV:", err);
+      }
+    }
+
+    setInterval(pollSheet, POLL_INTERVAL_MS);
+    pollSheet();
+  </script>
+</body>
+</html>
